@@ -44,56 +44,66 @@ class SimplexSolver:
         self.A, self.b, self.rels = np.array(A), np.array(b), rels
 
     def prepare_canonical(self):
-        """Приведение задачи к каноническому виду"""
+        """Преобразует задачу линейного программирования к каноническому виду."""
         m, n = self.A.shape
         if self.sense == "min":
             self.obj = -self.obj
 
-        extra_cols = []
-        self.base = [-1]*m
-        self.var_types = [VariableType.ORIGINAL]*n
-        next_col = n
+        objective_coefficients = list(self.obj.copy())
+        constraint_matrix = [list(row.copy()) for row in self.A]
+        constraint_rhs = list(self.b)
+        constraint_senses = list(self.rels)
 
-        for i, r in enumerate(self.rels):
-            if self.b[i] < 0:
-                self.A[i] *= -1
-                self.b[i] *= -1
-                r = {"<=": ">=", ">=": "<=", "=": "="}[r]
-                self.rels[i] = r
+        self.base = [-1] * m
+        self.var_types = [VariableType.ORIGINAL] * n
+        next_var = n
 
-            if r == "<=":
-                col = np.zeros(m)
-                col[i] = 1
-                extra_cols.append(col)
-                self.var_types.append(VariableType.ADDITIONAL)
-                self.base[i] = next_col
-                next_col += 1
-
-            elif r == ">=":
-                col = np.zeros(m)
-                col[i] = -1
-                extra_cols.append(col)
-                self.var_types.append(VariableType.ADDITIONAL)
-                next_col += 1
-                col = np.zeros(m)
-                col[i] = 1
-                extra_cols.append(col)
+        for i in range(m):
+            if constraint_senses[i] == "=":
+                for j in range(m):
+                    constraint_matrix[j].append(1 if j == i else 0)
+                objective_coefficients.append(0)
                 self.var_types.append(VariableType.TEMPORARY)
-                self.base[i] = next_col
-                next_col += 1
+                self.base[i] = next_var
+                next_var += 1
 
-            else:
-                col = np.zeros(m)
-                col[i] = 1
-                extra_cols.append(col)
+            elif constraint_senses[i] == "<=":
+                for j in range(m):
+                    constraint_matrix[j].append(1 if j == i else 0)
+                objective_coefficients.append(0)
+                self.var_types.append(VariableType.ADDITIONAL)
+                self.base[i] = next_var
+                next_var += 1
+                constraint_senses[i] = "="
+
+            elif constraint_senses[i] == ">=":
+                for j in range(m):
+                    constraint_matrix[j].append(-1 if j == i else 0)
+                objective_coefficients.append(0)
+                self.var_types.append(VariableType.ADDITIONAL)
+                next_var += 1
+
+                for j in range(m):
+                    constraint_matrix[j].append(1 if j == i else 0)
+                objective_coefficients.append(0)
                 self.var_types.append(VariableType.TEMPORARY)
-                self.base[i] = next_col
-                next_col += 1
+                self.base[i] = next_var
+                next_var += 1
+                constraint_senses[i] = "="
 
-        if extra_cols:
-            self.A = np.hstack([self.A] + [c.reshape(-1,1) for c in extra_cols])
-            self.obj = np.concatenate([self.obj, np.zeros(self.A.shape[1]-len(self.obj))])
+        canonical_problem_table = [objective_coefficients.copy()]
+        canonical_problem_table[0].append(self.sense)
+        for i in range(m):
+            row = constraint_matrix[i].copy()
+            row.append(constraint_rhs[i])
+            canonical_problem_table.append(row)
 
+        self.canonical_problem_table = canonical_problem_table
+        self.A = np.array([row[:-1] for row in canonical_problem_table[1:]], dtype=float)
+        self.b = np.array([row[-1] for row in canonical_problem_table[1:]], dtype=float)
+        self.obj = np.array(objective_coefficients, dtype=float)
+        self.rels = ["="] * m
+   
     def pivot(self, table, bidx, r, c):
         """Поворот по элементу (r,c)"""
         table[r] /= table[r,c]
@@ -152,32 +162,28 @@ class SimplexSolver:
         return Status.OK,table,bidx
 
     def solve_main(self, table, bidx):
-        """Решение основной задачи"""
-        keep = [i for i,t in enumerate(self.var_types) if t!=VariableType.TEMPORARY]
-        A2 = table[:-1,keep]
-        b2 = table[:-1,-1]
-        c2 = self.obj[keep]
+        keep = [i for i, t in enumerate(self.var_types) if t != VariableType.TEMPORARY]
+        m = table.shape[0] - 1
+        n = len(keep)
+
+        tab = np.zeros((m + 1, n + 1))
+        tab[:m, :n] = table[:m, keep]
+        tab[:m, -1] = table[:m, -1]
+        tab[-1, :n] = self.obj[keep]
+
         bidx2 = [keep.index(j) for j in bidx if j in keep]
+        for i, j in enumerate(bidx2):
+            tab[-1, :] -= tab[-1, j] * tab[i, :]
 
-        m,n = A2.shape
-        tab = np.zeros((m+1,n+1))
-        tab[:m,:n] = A2
-        tab[:m,-1] = b2
-        tab[-1,:n] = c2
-        for i,j in enumerate(bidx2):
-            tab[-1] -= tab[-1,j]*tab[i]
-
-        status = self.run_simplex_core(tab,bidx2)
-        if status!=Status.FOUND: 
-            return status,None,None
+        status = self.run_simplex_core(tab, bidx2)
+        if status != Status.FOUND:
+            return status, None, None
 
         x = np.zeros(len(keep))
-        for i,j in enumerate(bidx2):
-            x[j] = tab[i,-1]
-        F = -tab[-1,-1]
-        if self.sense=="min": 
-            F = -F
-        return Status.FOUND,F,x
+        for i, j in enumerate(bidx2):
+            x[j] = tab[i, -1]
+
+        return Status.FOUND, tab[-1, -1], x
 
     def run(self):
         """Запуск решения задачи"""
