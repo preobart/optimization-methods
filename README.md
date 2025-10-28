@@ -2,6 +2,8 @@
 
 Преображенский Артемий Евгеньевич, поток 1.1, вариант 20
 
+[Подкаст](https://drive.google.com/file/d/172BhGBlGAJ-om4OylIJCR0blYDrAxaQ6/view?usp=sharing)
+
 ---
 
 ## Краткое описание алгоритма решения ЗЛП
