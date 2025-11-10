@@ -4,76 +4,113 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def draw_broken_line(X, f, lower_func, points, L, iteration):
-    plt.figure(figsize=(8, 5))
-    plt.title(f'Поиск глобального минимума (итерация {iteration})')
-    plt.xlabel('x')
-    plt.ylabel('f(x)')
-    plt.grid(True)
+class MethodPiyavskiy:
+    def __init__(self, func, left, right, epsilon, L=None):
+        self.func = func
+        self.left = left
+        self.right = right
+        self.epsilon = epsilon
+        self.L = L
+        self.x_min = None
+        self.f_min = None
+        self.iter_count = 0
+        self.time_elapsed = 0
 
-    plt.plot(X, f(X), label='f(x)')
-    plt.plot(X, lower_func(X, points, L), '--', label='нижняя ломаная')
-    plt.scatter(points, f(points), color='red', zorder=5, label='выбранные точки')
+    # Вычисление константы Липшица
+    def compute_L(self):
+        if self.L is not None:
+            return self.L
+        h = 1e-6
+        X = np.linspace(self.left, self.right, 1000)
+        df = (self.func(X + h) - self.func(X)) / h
+        return np.max(np.abs(df))
 
-    plt.legend()
-    plt.show()
+    # Определение следующей точки на основе формулы пересечения ломанных
+    def _next_candidate(self, points, L):
+        sorted_pts = np.sort(points)
+        candidate = None
+        min_p_val = float('inf')
 
+        for i in range(len(sorted_pts)-1):
+            x1, x2 = sorted_pts[i], sorted_pts[i+1]
+            f1, f2 = self.func(x1), self.func(x2)
+            # формула пересечения ломанных
+            x_int = (f2 - f1 + L*(x1 + x2)) / (2*L)
+            if x1 < x_int < x2:
+                p_val = 0.5 * (f1 + f2 - L*(x2 - x1))
+                if p_val < min_p_val:
+                    min_p_val = p_val
+                    candidate = x_int
 
-def global_min_search(f, df, a, b, eps):
-    """
-    Поиск глобального минимума методом ломаных (Пиявский–Шуберт)
-    """
-    start = time.time()
-    X = np.linspace(a, b, 1000)
-    L = np.max(np.abs(df(X)))  # константа Липшица
-    print(f"Константа Липшица: {L:.4f}")
+        # если пересечение вне интервала — взять середину самого длинного сегмента
+        if candidate is None:
+            max_len = 0
+            for i in range(len(sorted_pts)-1):
+                seg_len = sorted_pts[i+1] - sorted_pts[i]
+                if seg_len > max_len:
+                    max_len = seg_len
+                    candidate = 0.5 * (sorted_pts[i] + sorted_pts[i+1])
+        return candidate
 
-    # начальные точки
-    x_points = np.array([a, b])
+    # Нижняя функция
+    def _lower_envelope(self, x_vals, points, L):
+        sorted_pts = np.sort(points)
+        y = np.full_like(x_vals, -np.inf, dtype=float)
+        for i in range(len(sorted_pts)-1):
+            x1, x2 = sorted_pts[i], sorted_pts[i+1]
+            f1, f2 = self.func(x1), self.func(x2)
+            seg_y = np.maximum(f1 - L*np.abs(x_vals - x1), f2 - L*np.abs(x_vals - x2))
+            y = np.maximum(y, seg_y)
+        return y
 
-    # нижняя функция
-    def lower_func(x, pts, L):
-        vals = []
-        for xi in x:
-            vals.append(np.max(f(pts) - L * np.abs(xi - pts)))
-        return np.array(vals)
+    def optimize(self):
+        start_time = time.time()
+        L = self.compute_L()
+        print(f"Константа Липшица: {L:.4f}")
 
-    iteration = 0
-    while True:
-        iteration += 1
-        f_star = np.min(f(x_points))
-        f_lower = lower_func(X, x_points, L)
-        # точка, где нижняя оценка минимальна
-        x_new = X[np.argmin(f_lower)]
+        points = np.array([self.left, self.right])
 
-        draw_broken_line(X, f, lower_func, x_points, L, iteration)
+        while True:
+            self.iter_count += 1
+            f_min_current = np.min(self.func(points))
+            next_pt = self._next_candidate(points, L)
+            points = np.append(points, next_pt)
 
-        gap = f_star - np.min(f_lower)
-        print(f"Итерация {iteration}: x* ≈ {x_new:.4f}, f(x*) ≈ {f(x_new):.4f}, gap = {gap:.6f}")
+            # вычисляем минимальное значение ломаной для проверки условия остановки
+            sorted_pts = np.sort(points)
+            min_lower = float('inf')
+            for i in range(len(sorted_pts)-1):
+                x1, x2 = sorted_pts[i], sorted_pts[i+1]
+                f1, f2 = self.func(x1), self.func(x2)
+                p_val = 0.5*(f1 + f2 - L*(x2 - x1))
+                if p_val < min_lower:
+                    min_lower = p_val
 
-        if gap < eps:
-            xmin = x_new
-            fmin = f(xmin)
-            break
-        x_points = np.append(x_points, x_new)
+            gap = f_min_current - min_lower
+            if gap < self.epsilon:
+                self.x_min = points[np.argmin(self.func(points))]
+                self.f_min = np.min(self.func(points))
+                break
 
-    elapsed = time.time() - start
-    print("\n=== Результат ===")
-    print(f"Глобальный минимум: f(x = {xmin:.4f}) = {fmin:.4f}")
-    print(f"Число итераций: {iteration}")
-    print(f"Время работы: {elapsed:.4f} сек")
-    return xmin, fmin
+        self.time_elapsed = time.time() - start_time
 
+        print(f"Глобальный минимум: f(x = {self.x_min:.6f}) = {self.f_min:.6f}")
+        print(f"Число итераций: {self.iter_count}")
+        print(f"Время работы: {self.time_elapsed:.4f} сек")
 
-def main():
-    # Пример функции с несколькими локальными минимумами
-    def f(x): return np.cos(x ** 2 - 3 * x) + 4
-    def df(x): return -np.sin(x ** 2 - 3 * x) * (2 * x - 3)
+        self._plot(points, L)
+        return self.x_min, self.f_min
 
-    eps = 0.01
-    a, b = -1, 3
-    xmin, fmin = global_min_search(f, df, a, b, eps)
-
-
-if __name__ == "__main__":
-    main()
+    def _plot(self, points, L):
+        X = np.linspace(self.left, self.right, 1000)
+        plt.figure(figsize=(10,5))
+        plt.plot(X, self.func(X), color='black', linewidth=2, label='f(x)')
+        plt.plot(X, self._lower_envelope(X, points, L), '--', color='red', linewidth=2, label='Нижняя ломаная')
+        plt.scatter(points, self.func(points), color='blue', zorder=5, label='Выбранные точки')
+        plt.scatter(self.x_min, self.f_min, color='green', s=30, label='Минимум', zorder=10)
+        plt.title('Метод Пиявского')
+        plt.xlabel('x')
+        plt.ylabel('f(x)')
+        plt.grid(True)
+        plt.legend()
+        plt.show()
