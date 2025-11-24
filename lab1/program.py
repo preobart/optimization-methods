@@ -247,4 +247,4 @@ class SimplexSolver:
 
 
 if __name__ == "__main__":
-    SimplexSolver("input2.txt").solve()
+    SimplexSolver("input1.txt").solve()
