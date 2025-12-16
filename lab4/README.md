@@ -35,7 +35,7 @@ $$F_k(s) = \max_{u \in U(s)} \mathbb{E}_w \left[ F_{k+1}\bigl( f(s, u, w) \bigr)
 
 Граничное условие:
 
-$$F_N(s) = \text{total\_value}(s) = \text{cb1} + \text{cb2} + \text{dep} + \text{cash}$$
+$$F_N(s) = V(s) = \text{cb1} + \text{cb2} + \text{dep} + \text{cash}$$
 
 Обратный проход:
 - Вычисляем $F_k(s)$ для всех релевантных состояний $s$ от $k = N-1$ до $0$
