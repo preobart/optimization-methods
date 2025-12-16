@@ -46,14 +46,15 @@ class InvestmentPlanner:
     def actions(self, s):
         """
         Генерирует все допустимые действия из состояния s:
-        - шаг изменения от -2 до 2
+        - шаг изменения от -3 до 3
         - проверка минимальных объемов
         - проверка достаточности денег под комиссией
         """
         res = []
-        for d1 in range(-2, 3):
-            for d2 in range(-2, 3):
-                for dd in range(-2, 3):
+        max_steps = 3
+        for d1 in range(-max_steps, max_steps + 1):
+            for d2 in range(-max_steps, max_steps + 1):
+                for dd in range(-max_steps, max_steps + 1):
                     a = {"cb1": d1, "cb2": d2, "dep": dd}
 
                     if s["cb1"] + d1 * STEP["cb1"] < MINV["cb1"]:
@@ -63,16 +64,16 @@ class InvestmentPlanner:
                     if s["dep"] + dd * STEP["dep"] < MINV["dep"]:
                         continue
 
-                    ok = True
+                    cost = 0
                     for k, d in a.items():
                         c = d * STEP[k]
                         c *= (1 + FEE[k]) if c > 0 else (1 - FEE[k])
-                        if c > s["cash"] + 1e-9:
-                            ok = False
-                            break
+                        cost += c
 
-                    if ok:
-                        res.append(a)
+                    if cost > s["cash"] + 1e-9:
+                        continue
+
+                    res.append(a)
 
         if not any(a["cb1"] == a["cb2"] == a["dep"] == 0 for a in res):
             res.append({"cb1": 0, "cb2": 0, "dep": 0})
@@ -143,17 +144,38 @@ class InvestmentPlanner:
 
         return self.total(s), path
 
+def format_action(action):
+    parts = []
+    names = {"cb1": "ЦБ1", "cb2": "ЦБ2", "dep": "Депозиты"}
+    for k, v in action.items():
+        if v != 0:
+            sign = "+" if v > 0 else ""
+            parts.append(f"{names[k]}: {sign}{v} шагов ({sign}{v*STEP[k]:.2f} д.е.)")
+    if not parts:
+        return "Без изменений"
+    return ", ".join(parts)
+
+
 if __name__ == "__main__":
     planner = InvestmentPlanner()
     value, path = planner.solve()
-    print(f"Начальный портфель: {planner.total(INIT):.2f} д.е.\n")
+
+    print("ОПТИМАЛЬНАЯ СТРАТЕГИЯ УПРАВЛЕНИЯ:")
+    print()
+
     for i, (action, state) in enumerate(path, 1):
-        action_str = ", ".join(f"{k.upper()}:{v*STEP[k]:.2f}" for k, v in action.items() if v != 0)
-        if not action_str:
-            action_str = "Без изменений"
-        print(f"Этап {i}: {action_str}")
-        print(f"  Стоимость портфеля: {planner.total(state):.2f} д.е.\n")
-    growth = value - planner.total(INIT)
-    growth_pct = growth / planner.total(INIT) * 100
-    print(f"Максимальный ожидаемый доход: {value:.2f} д.е. (Прирост: {growth:.2f} д.е., {growth_pct:.2f}%)")
-    print(f"Всего обработано состояний: {len(planner.cache)}")
+        print(f"Этап {i}: {format_action(action)}")
+        print(f"  Стоимость портфеля: {planner.total(state):.2f} д.е.")
+        print()
+
+    print("РЕЗУЛЬТАТЫ:")
+    print()
+
+    initial_value = planner.total(INIT)
+    growth = value - initial_value
+    growth_pct = growth / initial_value * 100
+
+    print(f"  Начальная стоимость портфеля: {initial_value:.2f} д.е.")
+    print(f"  Максимальный ожидаемый доход: {value:.2f} д.е.")
+    print(f"  Прирост: {growth:.2f} д.е. ({growth_pct:.2f}%)")
+    print(f"  Всего обработано состояний: {len(planner.cache)}")
