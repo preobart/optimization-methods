@@ -51,7 +51,7 @@ $$F_N(s) = V(s) = \text{cb1} + \text{cb2} + \text{dep} + \text{cash}$$
 - $s = \{\text{cb1}, \text{cb2}, \text{dep}, \text{cash}\}$  
 - $u = \{d_1, d_2, d_d\}$ — целые пакеты для каждого актива
 - Стоимость операции (учёт комиссии): для каждой позиции $k$ вычисляем $c = d \cdot \text{STEP}_k$; при $c > 0$ (покупка) умножаем на $(1 + \text{FEE}_k)$, при $c < 0$ (продажа) — на $(1 - \text{FEE}_k)$. Сумма $c$ — расход/выручка, применяется к cash: $\text{cash}' = \max(0, \text{cash} - \sum c)$.
-- Ограничения: $\text{cb1}' \geq \text{MINV}_{\text{cb1}}$, $\text{cb2}' \geq \text{MINV}_{\text{cb2}}$, $\text{dep}' \geq \text{MINV}_{\text{dep}}$, $\text{cost} \leq \text{cash}$.
+- Ограничения: $\text{cb1}' \geq \text{MINV}_1$, $\text{cb2}' \geq \text{MINV}_2$, $\text{dep}' \geq \text{MINV}_3$, $\text{cost} \leq \text{cash}$.
 - Рекуррент: то же, что в секции 3, конкретно реализовано в методе `bellman(k, s)`.
 
 ---
